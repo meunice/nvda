@@ -694,12 +694,7 @@ def speakTypedCharacters(ch):
 		# delete character produced in some apps with control+backspace
 		return
 	elif len(curWordChars)>0:
-		typedWord="".join(curWordChars)
-		curWordChars=[]
-		if log.isEnabledFor(log.IO):
-			log.io("typed word: %s"%typedWord)
-		if config.conf["keyboard"]["speakTypedWords"] and not typingIsProtected:
-			speakText(typedWord)
+		speakPreviousWord(realChar)
 	global _suppressSpeakTypedCharactersNumber, _suppressSpeakTypedCharactersTime
 	if _suppressSpeakTypedCharactersNumber > 0:
 		# We primarily suppress based on character count and still have characters to suppress.
@@ -714,6 +709,70 @@ def speakTypedCharacters(ch):
 		suppress = False
 	if not suppress and config.conf["keyboard"]["speakTypedCharacters"] and ch >= FIRST_NONCONTROL_CHAR:
 		speakSpelling(realChar)
+
+def speakPreviousWord(wordSeparator=None):
+	global curWordChars
+	word = bufferedWord = "".join(curWordChars)
+	typingIsProtected = api.isTypingProtected()
+	reportSpellingError = config.conf["documentFormatting"]["reportSpellingErrors"] and config.conf["keyboard"]["alertForSpellingErrors"]
+	if not (log.isEnabledFor(log.IO) or (
+		config.conf["keyboard"]["speakTypedWords"] and not typingIsProtected
+	) or reportSpellingError):
+		curWordChars = []
+		return
+	try:
+		obj = api.getCaretObject()
+	except:
+		# No caret object, nothing to report
+		return
+	# The caret object can be an NVDAObject or a TreeInterceptor.
+	# Editable caret cases inherrit from EditableText.
+	from editableText import EditableText
+	if not isinstance(obj, EditableText) or controlTypes.STATE_READONLY in getattr(obj,"states",()):
+		curWordChars = []
+		return
+	speakUsingTextInfo = False
+	for attempt in xrange(3):
+		if attempt > 0: # Not the first attempt
+			time.sleep(0.05)
+		try:
+			info = obj.makeTextInfo(textInfos.POSITION_CARET)
+			if not info.findWordBeforeCaret(wordSeparator):
+				curWordChars.append(wordSeparator)
+				return 
+		except (RuntimeError, LookupError):
+			log.debugWarning("Couldn't rely on TextInfo for word echo", exc_info=True)
+			break
+		except:
+			# Focus probably moved.
+			log.debugWarning("Error fetching previous word before caret", exc_info=True)
+			break
+		else:
+			# #8065: Sometimes (as observed in Firefox), findWordBeforeCaret moves to the wrong word.
+			# Additionally, the TextInfo may contain one or more characters after the caret.
+			# Checking whether the stripped TextInfo text ends with the buffer is far from perfect, but works in most cases.
+			if info.text.rstrip().endswith(bufferedWord):
+				word = info.text
+				speakUsingTextInfo = True
+				break
+			log.debugWarning("Typed word in buffer %r does not match word in TextInfo %r after attempt %d"%(bufferedWord, info.text, attempt+1))
+	curWordChars = []
+	if log.isEnabledFor(log.IO):
+		log.io("typed word: %s"%word)
+	if config.conf["keyboard"]["speakTypedWords"] and not typingIsProtected:
+		if speakUsingTextInfo:
+			speakTextInfo(info, unit=textInfos.UNIT_WORD, reason=controlTypes.REASON_CARET)
+		else:
+			speakText(word)
+	if word != bufferedWord and reportSpellingError:
+		for command in info.getTextWithFields():
+			if isinstance(command, textInfos.FieldCommand) and command.command == "formatChange" and command.field.get("invalid-spelling"):
+				break
+		else:
+			# No error.
+			return
+		import nvwave
+		nvwave.playWaveFile(r"waves\textError.wav")
 
 class SpeakTextInfoState(object):
 	"""Caches the state of speakTextInfo such as the current controlField stack, current formatfield and indentation."""

@@ -2,7 +2,7 @@
 #A part of NonVisual Desktop Access (NVDA)
 #This file is covered by the GNU General Public License.
 #See the file COPYING for more details.
-#Copyright (C) 2006-2019 NV Access Limited, Bill Dengler
+#Copyright (C) 2006-2019 NV Access Limited, Bill Dengler, Babbage B.V.
 
 from comtypes import COMError
 import IAccessibleHandler
@@ -78,6 +78,7 @@ class JAB_OOTableCell(JAB):
 			return 0
 
 class SymphonyTextInfo(IA2TextTextInfo):
+	useUniscribe=False
 
 	def _getFormatFieldAndOffsets(self,offset,formatConfig,calculateOffsets=True):
 		obj = self.obj
@@ -180,6 +181,12 @@ class SymphonyTextInfo(IA2TextTextInfo):
 					pass
 
 		return formatField,(startOffset,endOffset)
+
+	def _getWordOffsets(self, offset):
+		# #8065: At least in LibreOffice, the word offsets returned by IA2TextTextInfo do not match reality.
+		# As long as uniscribe is disabled, The LibreOffice implementation much more closely matches
+		# the OffsetsTextInfo implementation to fetch word offsets
+		return super(IA2TextTextInfo, self)._getWordOffsets(offset)
 
 	def _getLineOffsets(self, offset):
 		start, end = super(SymphonyTextInfo, self)._getLineOffsets(offset)
