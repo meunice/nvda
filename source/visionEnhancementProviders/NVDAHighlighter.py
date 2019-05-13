@@ -239,12 +239,12 @@ class NVDAHighlighterSettingsPanel(SettingsPanel):
 		self.highlightNavigatorObjCheckBox.SetValue(config.conf['vision'][VisionEnhancementProvider.name]["highlightNavigatorObj"])
 		# Translators: This is the label for a checkbox in the
 		# default highlighter settings panel to enable highlighting the virtual caret (such as in browse mode).
-		self.highlightCaretCheckBox=sHelper.addItem(wx.CheckBox(self,label=_("Follow &browse mode caret")))
-		self.highlightCaretCheckBox.SetValue(config.conf['vision'][VisionEnhancementProvider.name]["highlightCaret"])
+		self.highlightBrowseModeCheckBox=sHelper.addItem(wx.CheckBox(self,label=_("Follow &browse mode caret")))
+		self.highlightBrowseModeCheckBox.SetValue(config.conf['vision'][VisionEnhancementProvider.name]["highlightBrowseMode"])
 
 	def onSave(self):
 		config.conf['vision'][VisionEnhancementProvider.name]["highlightFocus"]=self.highlightFocusCheckBox.IsChecked()
 		config.conf['vision'][VisionEnhancementProvider.name]["highlightNavigatorObj"]=self.highlightNavigatorObjCheckBox.IsChecked()
-		config.conf['vision'][VisionEnhancementProvider.name]["highlightCaret"]=self.highlightCaretCheckBox.IsChecked()
+		config.conf['vision'][VisionEnhancementProvider.name]["highlightBrowseMode"]=self.highlightBrowseModeCheckBox.IsChecked()
 
 VisionEnhancementProvider.guiPanelCls = NVDAHighlighterSettingsPanel
