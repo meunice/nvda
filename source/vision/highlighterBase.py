@@ -8,7 +8,7 @@
 A highlighter is used to highlight important areas of the screen (e.g. the focus, mouse or review position).
 """
 
-from .providerBase import VisionEnhancementProvider
+from .providerBase import VisionEnhancementProvider, ProviderEventAdapter
 from abc import abstractmethod
 import driverHandler
 from .constants import ROLE_HIGHLIGHTER
@@ -20,7 +20,10 @@ class Highlighter(VisionEnhancementProvider):
 	Supported contexts should be listed in L{supportedHighlightContexts}.
 	"""
 
+# as far as I can tell this isn't used to provide differences in behaviour?
+
 	__role = ROLE_HIGHLIGHTER
+	_event_adapter_class = HighlighterEventAdaptor
 
 	#: Tuple of supported contexts for this highlighter.
 	supportedHighlightContexts = tuple()
@@ -87,3 +90,41 @@ class Highlighter(VisionEnhancementProvider):
 			context for context in self.supportedHighlightContexts
 			if getattr(self, 'highlight%s' % (context[0].upper() + context[1:]))
 		)
+
+class HighlighterEventAdaptor(ProviderEventAdapter):
+	def __init__(self, highlighter):
+		"""
+		:param magnifier:
+		:type magnifier: Magnifier
+		"""
+		self.highlighter = highlighter
+
+	def handleForeground(self, obj):
+			self.highlighter.updateContextRect(CONTEXT_FOREGROUND, obj=obj)
+
+	def handleGainFocus(self, obj):
+		self.highlighter.updateContextRect(CONTEXT_FOCUS, obj=obj)
+		if config.conf['reviewCursor']['followFocus']:
+			# Purposely don't provide the object to updateContextRect here.
+			# This is because obj could also be a tree interceptor.
+			# Furthermore, even when review follows focus, there might be
+			# reasons why the navigator object is not the same as the focus object.
+			self.highlighter.updateContextRect(CONTEXT_NAVIGATOR)
+		if not mightHaveCaret: # this is an error, not sure how to fix.
+			# If this object does not have a caret, clear the caret rectangle from the map
+			# However, in the unlikely case it yet has a caret, we want to highlight that.
+			self.highlighter.updateContextRect(CONTEXT_CARET, obj=obj)
+
+	def handlePendingCaretUpdate(self, lastCaretObj, context):
+		self.highlighter.updateContextRect(context, obj=lastCaretObj)
+
+	def handlePendingReviewUpdate(self, lastReviewMoveContext):
+		for context in (
+				CONTEXT_NAVIGATOR,
+				CONTEXT_REVIEW
+		):
+			self.highlighter.updateContextRect(context=context)
+
+	def handleMouseMove(self, obj, x, y):
+		# highlighter doesn't care about the mouse.
+		pass

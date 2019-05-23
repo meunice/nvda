@@ -171,37 +171,17 @@ class VisionHandler(AutoPropertyObject):
 			self.handleReviewMove(context=CONTEXT_NAVIGATOR)
 
 	def handleForeground(self, obj):
-		context = CONTEXT_FOREGROUND
-		if self.magnifier:
-			self.magnifier.trackToObject(obj, context=context)
-		if self.highlighter:
-			self.highlighter.updateContextRect(context, obj=obj)
+		for p in self.providers:
+			p.handleForground(obj)
 
 	def handleGainFocus(self, obj):
-		context = CONTEXT_FOCUS
-		if self.magnifier:
-			self.magnifier.trackToObject(obj, context=context)
+		for p in self.providers:
+			p.handleGainFocus(obj)
 		if getattr(obj, "_hasNavigableText", False):
 			# This object most likely has a caret.
 			# Intentionally check this after tracking a magnifier to the object itself.
+			# What about a highlighter? It may be helpful for low vision people to have the caret highlighted?
 			self.handleCaretMove(obj)
-		if self.highlighter:
-			self.highlighter.updateContextRect(context, obj=obj)
-			if config.conf['reviewCursor']['followFocus']:
-				# Purposely don't provide the object to updateContextRect here.
-				# This is because obj could also be a tree interceptor.
-				# Furthermore, even when review follows focus, there might be
-				# reasons why the navigator object is not the same as the focus object.
-				self.highlighter.updateContextRect(CONTEXT_NAVIGATOR)
-			if not mightHaveCaret:
-				# If this object does not have a caret, clear the caret rectangle from the map
-				# However, in the unlikely case it yet has a caret, we want to highlight that.
-				self.highlighter.updateContextRect(CONTEXT_CARET, obj=obj)
-
-	def handleCaretMove(self, obj):
-		if not self.enabled:
-			return
-		self.lastCaretObjRef = weakref.ref(obj)
 
 	def handlePendingCaretUpdate(self):
 		if not callable(self.lastCaretObjRef):
@@ -215,13 +195,12 @@ class VisionHandler(AutoPropertyObject):
 		# Import late to avoid circular import
 		import cursorManager
 		context = CONTEXT_CARET if not isinstance(obj, cursorManager.CursorManager) else CONTEXT_BROWSEMODE
-		try:
-			if self.magnifier:
-				self.magnifier.trackToObject(obj, context=context)
-			if self.highlighter:
-				self.highlighter.updateContextRect(context, obj=obj)
-		finally:
-			self.lastCaretObjRef = None
+		for p in self.providers:
+			try:
+				p.handlePendingCaretUpdate(obj, context)
+			except:
+				pass
+		self.lastCaretObjRef = None
 
 	def handleReviewMove(self, context=CONTEXT_REVIEW):
 		if not self.enabled:
@@ -234,16 +213,12 @@ class VisionHandler(AutoPropertyObject):
 			return
 		lastReviewMoveContext = self.lastReviewMoveContext
 		self.lastReviewMoveContext = None
-		if lastReviewMoveContext in (CONTEXT_NAVIGATOR, CONTEXT_REVIEW) and self.magnifier:
-			self.magnifier.trackToObject(context=lastReviewMoveContext)
-		if self.highlighter:
-			for context in (CONTEXT_NAVIGATOR, CONTEXT_REVIEW):
-				self.highlighter.updateContextRect(context=context)
+		for p in self.providers:
+			p.handlePendingReviewUpdate(lastReviewMoveContext)
 
 	def handleMouseMove(self, obj, x, y):
-		# Mouse moves execute once per core cycle.
-		if self.magnifier:
-			self.magnifier.trackToPoint((x, y), context=CONTEXT_MOUSE)
+		for p in self.providers:
+			p.handleMouseMove(obj, x, y)
 
 	def handleConfigProfileSwitch(self):
 		for role in ROLE_DESCRIPTIONS.keys():

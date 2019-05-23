@@ -26,17 +26,29 @@ class VisionEnhancementProvider(driverHandler.Driver):
 	_instance = None
 	cachePropertiesByDefault = True
 	__role = None
+	_event_adapter_class = None  # should be set to the class type for the adapter
+
+	@classmethod
+	def _checkAdaptorValididty(cls):
+		return issubclass(ProviderEventAdapter, cls._event_adapter_class)
 
 	@classmethod
 	def __new__(cls, *args, **kwargs):
 		# Make this a singleton.
 		inst = cls._instance() if cls._instance else None
 		if not inst:
+			if not cls._checkAdaptorValididty():
+				# see VisionEnhancementProvider._event_adapter_class
+				raise TypeError("subclass must designate an appropriate provider adaptor.")
 			obj = super(VisionEnhancementProvider, cls).__new__(cls, *args, **kwargs)
 			obj.activeRoles = set()
 			cls._instance = weakref.ref(obj)
 			return obj
 		return inst
+
+	@classmethod
+	def getProviderAdapter(cls):
+		return cls._event_adapter_class
 
 	def __init__(self, *roles):
 		"""Constructor.
@@ -173,3 +185,24 @@ class VisionEnhancementProvider(driverHandler.Driver):
 				continue
 			getattr(self, "terminate%s" % (role[0].upper()+role[1:]))()
 			self.activeRoles.remove(role)
+
+
+class ProviderEventAdapter(object):
+	""" pure interface to adapt events from NVDA to control various vision providers"""
+	def handleForeground(self, obj):
+		pass
+
+	def handleGainFocus(self, obj):
+		pass
+
+	def handleCaretMove(self, obj):
+		pass
+
+	def handlePendingCaretUpdate(self, lastCaretObj, context):
+		pass
+
+	def handlePendingReviewUpdate(self, lastReviewMoveContext):
+		pass
+
+	def handleMouseMove(self, obj, x, y):
+		pass

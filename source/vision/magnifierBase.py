@@ -8,7 +8,7 @@
 A magnifier is used to magnify the full screen or a part of it.
 """
 
-from .providerBase import VisionEnhancementProvider
+from .providerBase import VisionEnhancementProvider, ProviderEventAdapter
 import driverHandler
 from abc import abstractmethod
 from .constants import *
@@ -98,3 +98,30 @@ class Magnifier(VisionEnhancementProvider):
 			context for context in self.supportedTrackingContexts
 			if getattr(self, 'trackTo%s' % (context[0].upper() + context[1:]))
 		)
+
+
+class MagnifierEventAdapter(ProviderEventAdapter):
+
+	def __init__(self, magnifier):
+		"""
+		:param magnifier:
+		:type magnifier: Magnifier
+		"""
+		self.magnifier = magnifier
+
+	def handleForeground(self, obj):
+		self.magnifier.trackToObject(obj, context=CONTEXT_FOREGROUND)
+
+	def handleGainFocus(self, obj):
+		self.magnifier.trackToObject(obj, context=CONTEXT_FOCUS)
+
+	def handlePendingCaretUpdate(self, lastCaretObj, context):
+		self.magnifier.trackToObject(lastCaretObj, context=context)
+
+	def handlePendingReviewUpdate(self, lastReviewMoveContext):
+		if lastReviewMoveContext in (CONTEXT_NAVIGATOR, CONTEXT_REVIEW):
+			self.magnifier.trackToObject(context=lastReviewMoveContext)
+
+	def handleMouseMove(self, obj, x, y):
+		# Mouse moves execute once per core cycle.
+		self.magnifier.trackToPoint((x, y), context=CONTEXT_MOUSE)
