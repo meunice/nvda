@@ -67,7 +67,17 @@ class VisionHandler(AutoPropertyObject):
 			curProvider.terminate(role)
 			setattr(self, role, None)
 
-	def setProvider(self, name, roles, temporary=False, catchExceptions=True):
+	def _terminateProvidersWithRoles(self, roles):
+		for role in roles:
+			try:
+				self.terminateProviderForRole(role)
+			except:
+				# Purposely catch everything.
+				# A provider can raise whatever exception,
+				# therefore it is unknown what to expect.
+				log.error("Couldn't terminate provider for role %s" % role, exc_info=True)
+
+	def setProvider(self, name, roles):
 		"""Enables and activates the selected provider for the provided roles.
 		If there was a previous provider in use for a role,
 		that provider will be terminated for that role.
@@ -77,31 +87,13 @@ class VisionHandler(AutoPropertyObject):
 			Supplied values should be one of the C{ROLE_*} constants.
 			if roles is empty, the provider is enabled for all the roles it supports.
 		@type roles: [str]
-		@param temporary: Whether the selected provider is enabled temporarily (e.g. as a fallback).
-			This defaults to C{False}.
-			If C{True}, no changes will be performed to the configuration.
-		@type temporary: bool
-		@param catchExceptions: Whether exceptions raised while loading a provider should be handled gracefully.
-			This defaults to C{True}, in which case an error is logged on failure,
-			and there is an automatic fallback to no provider for the supplied roles.
-			If C{False}, the caller should catch possible exceptions.
-		@type temporary: bool
-		@returns: Whether loading of the requested provider succeeded.
-		@rtype: bool
 		"""
 		if name in (None, "None"):
 			if not roles:
 				raise ValueError("No name and no roles provided")
+			self._terminateProvidersWithRoles(roles)
 			for role in roles:
-				try:
-					self.terminateProviderForRole(role)
-				except:
-					# Purposely catch everything.
-					# A provider can raise whatever exception,
-					# therefore it is unknown what to expect.
-					log.error("Couldn't terminate provider for role %s" % role, exc_info=True)
-				if not temporary:
-					config.conf['vision'][role] = None
+				config.conf['vision'][role] = None
 			return True
 
 		providerCls = getProviderClass(name)
@@ -129,8 +121,7 @@ class VisionHandler(AutoPropertyObject):
 			# Properly terminate  providers that are active for the current role.
 			for conflict in newRoles:
 				self.terminateProviderForRole(conflict)
-				if not temporary:
-					config.conf['vision'][conflict] = None
+				config.conf['vision'][conflict] = None
 			# Initialize the provider for the new and overlapping roles
 			providerInst.__init__(*roles)
 			if initiallyEnabled:
@@ -141,8 +132,7 @@ class VisionHandler(AutoPropertyObject):
 			# Assign the new provider to the new roles.
 			for role in newRoles:
 				setattr(self, role, providerInst)
-				if not temporary:
-					config.conf['vision'][role] = providerCls.name
+				config.conf['vision'][role] = providerCls.name
 			try:
 				self.initialFocus()
 			except:
@@ -153,10 +143,9 @@ class VisionHandler(AutoPropertyObject):
 				log.debugWarning("Error in initial focus after provider load", exc_info=True)
 			return True
 		except:
-			if not catchExceptions:
-				raise
 			log.error("Error initializing vision enhancement provider %s for roles %s" % (name, ", ".join(roles)), exc_info=True)
-			self.setProvider(None, roles, temporary=True)
+			# treat this as a temporary change, don't save to config
+			self._terminateProvidersWithRoles(roles)
 			return False
 
 	def _get_initializedProviders(self):
