@@ -114,6 +114,7 @@ class IAccPropServer_Impl(COMObject, metaclass=ABCMeta):
 		Uses a low-level approach, because comtypes tries to clear the VARIANT even though it is an out param.
 		When the pfHasProp part is FALSE / self.DOES_NOT_HAVE_PROP, then the pvarValue.vt part must be VT_EMPTY.
 		"""
+		print(f"called with {idProp}")
 		# Set values in case we return early.
 		pfGotProp[:] = self.DOES_NOT_HAVE_PROP
 		pvarValue[:].vt = VT_EMPTY
@@ -127,8 +128,9 @@ class IAccPropServer_Impl(COMObject, metaclass=ABCMeta):
 			log.exception()
 		else:
 			if ret[1] == self.HAS_PROP:
-				pvarValue[:] = self.HAS_PROP
+				pfGotProp[:] = self.HAS_PROP
 				pvarValue[:] = ret[0]
+				print(f"pvarValue.vt == VT_EMPTY: {pvarValue.vt == VT_EMPTY} pvarValue: {pvarValue}")
 		return 0
 
 	def _onDestroyControl(self, evt):
