@@ -24,6 +24,7 @@ from . import NVDAObject, NVDAObjectTextInfo
 import textInfos
 import editableText
 from logHandler import log
+from scriptHandler import script
 import api
 import ui
 import braille
@@ -365,6 +366,104 @@ class Terminal(LiveText, EditableText):
 	def event_loseFocus(self):
 		super(Terminal, self).event_loseFocus()
 		self.stopMonitoring()
+
+
+class KeyboardHandlerBasedTypedCharSupport(Terminal):
+	"""A Terminal object that also provides typed character support for
+	console applications via keyboardHandler events.
+	This class relies on the toUnicodeEx Windows function, and in particular
+	the flag to preserve keyboard state available in Windows 10 1607
+	and later."""
+	#: Whether this object quickly and reliably sends textChange events
+	#: when its contents update.
+	#: Timely and reliable textChange events are required
+	#: to support password suppression.
+	_supportsTextChange = True
+	#: A queue of typed characters, to be dispatched on C{textChange}.
+	#: This queue allows NVDA to suppress typed passwords when needed.
+	_queuedChars = []
+	#: Whether the console got new text lines in its last update.
+	#: Used to determine if typed character/word buffers should be flushed.
+	_hasNewLines = False
+	#: Whether the last typed character is a tab.
+	#: If so, we should temporarily disable filtering as completions may
+	#: be short.
+	_hasTab = False
+
+	def _reportNewText(self, line):
+		# Additional typed character filtering beyond that in LiveText
+		if (
+			not self._hasTab
+			and len(line.strip()) < max(len(speech.curWordChars) + 1, 3)
+		):
+			return
+		if self._hasNewLines:
+			# Clear the typed word buffer for new text lines.
+			speech.clearTypedWordBuffer()
+			self._queuedChars = []
+		super(KeyboardHandlerBasedTypedCharSupport, self)._reportNewText(line)
+
+	def event_typedCharacter(self, ch):
+		if ch == '\t':
+			self._hasTab = True
+			# Clear the typed word buffer for tab completion.
+			speech.clearTypedWordBuffer()
+		else:
+			self._hasTab = False
+		if (
+			(
+				config.conf['keyboard']['speakTypedCharacters']
+				or config.conf['keyboard']['speakTypedWords']
+			)
+			and not config.conf['UIA']['winConsoleSpeakPasswords']
+			and self._supportsTextChange
+		):
+			self._queuedChars.append(ch)
+		else:
+			super(KeyboardHandlerBasedTypedCharSupport, self).event_typedCharacter(ch)
+
+	def event_textChange(self):
+		self._dispatchQueue()
+		super(KeyboardHandlerBasedTypedCharSupport, self).event_textChange()
+
+	@script(gestures=[
+		"kb:enter",
+		"kb:numpadEnter",
+		"kb:tab",
+		"kb:control+c",
+		"kb:control+d",
+		"kb:control+pause"
+	])
+	def script_flush_queuedChars(self, gesture):
+		"""
+		Flushes the typed word buffer and queue of typedCharacter events if present.
+		Since these gestures clear the current word/line, we should flush the
+		queue to avoid erroneously reporting these chars.
+		"""
+		gesture.send()
+		self._queuedChars = []
+		speech.clearTypedWordBuffer()
+
+	def _calculateNewText(self, newLines, oldLines):
+		self._hasNewLines = (
+			self._findNonBlankIndices(newLines)
+			!= self._findNonBlankIndices(oldLines)
+		)
+		return super(KeyboardHandlerBasedTypedCharSupport, self)._calculateNewText(newLines, oldLines)
+
+	def _dispatchQueue(self):
+		"""Sends queued typedCharacter events through to NVDA."""
+		while self._queuedChars:
+			ch = self._queuedChars.pop(0)
+			super(KeyboardHandlerBasedTypedCharSupport, self).event_typedCharacter(ch)
+
+	def _findNonBlankIndices(self, lines):
+		"""
+		Given a list of strings, returns a list of indices where the strings
+		are not empty.
+		"""
+		return [index for index, line in enumerate(lines) if line]
+
 
 class CandidateItem(NVDAObject):
 
